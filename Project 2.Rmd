@@ -1,0 +1,107 @@
+---
+title: "Project 2"
+author: "Zachary Kekoa"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+### Get Data
+```{r}
+library(caTools)
+library(ROCR)
+adult <- read.csv(file = "adult.csv")
+dim(adult)
+```
+```{r}
+head(adult)
+```
+
+### Data Exploration/Transformation
+```{r}
+# convert ? to NA values
+adult[adult == "?"] <- NA
+# remove NA values
+adult1 <- adult[complete.cases(adult),]
+
+# remove education, fnlwgt, capital.gain, and capital.loss
+adult2 <- subset(adult1, select = -c(education, fnlwgt, capital.gain, capital.loss))
+
+#convert target variable to 1 if >50K and 0 if <=50K
+adult2["income"][adult2["income"] == ">50K"] <- 1
+adult2["income"][adult2["income"] == "<=50K"] <- 0
+adult2$income <- as.numeric(adult2$income)
+```
+
+```{r}
+# Ordinal encoding of categorical variables
+
+encode_ordinal <- function(x, order = unique(x)) {
+  x <- as.numeric(factor(x, levels = order, exclude = NULL))
+  x
+}
+
+adult2[["workclass"]] <- encode_ordinal(adult2[["workclass"]])
+adult2[["marital.status"]] <- encode_ordinal(adult2[["marital.status"]])
+adult2[["occupation"]] <- encode_ordinal(adult2[["occupation"]])
+adult2[["relationship"]] <- encode_ordinal(adult2[["relationship"]])
+adult2[["race"]] <- encode_ordinal(adult2[["race"]])
+adult2[["gender"]] <- encode_ordinal(adult2[["gender"]])
+adult2[["native.country"]] <- encode_ordinal(adult2[["native.country"]])
+```
+
+```{r}
+head(adult2)
+```
+
+### Build Model
+```{r}
+# split dataset
+split <- sample.split(adult2, SplitRatio = 0.8)
+split
+   
+train <- subset(adult2, split == "TRUE")
+test <- subset(adult2, split == "FALSE")
+```
+
+```{r}
+# fit the model
+l_mod <- glm(income ~ ., data = train, family = "binomial")
+
+summary(l_mod)
+```
+
+### Predict On Test Data
+```{r}
+predict <- predict(l_mod, test, type = "response")
+
+# change probabilities
+predict <- ifelse(predict >0.5, 1, 0)
+```
+
+### Evaluate Accuracy
+```{r}
+table(test$income, predict)
+   
+missing_classerr <- mean(predict != test$income)
+print(paste('Accuracy =', 1 - missing_classerr))
+```
+
+### ROC curve
+```{r}
+# build curve
+ROCPred <- prediction(predict, test$income) 
+ROCPer <- performance(ROCPred, measure = "tpr", x.measure = "fpr")
+   
+auc <- performance(ROCPred, measure = "auc")
+auc <- auc@y.values[[1]]
+
+# plot curve
+plot(ROCPer)
+plot(ROCPer, colorize = TRUE, 
+     print.cutoffs.at = seq(0.1, by = 0.1), 
+     main = "ROC CURVE")
+abline(a = 0, b = 1)
+   
+auc <- round(auc, 4)
+legend(.6, .4, auc, title = "AUC", cex = 1)
+```
